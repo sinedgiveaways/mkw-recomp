@@ -93,6 +93,8 @@ Beyond the console, all optional and off (or at the console's value) by default:
 - **Sound**: 5.1 surround.
 - **Controls**: every key and button rebindable, mouse camera, Nintendo, Xbox or PlayStation button icons, motion
   steering, vibration strength; local multiplayer with one controller each.
+- **Steam Remote Play Together**: friends far away join local multiplayer through Steam, with their controller or
+  keyboard ([docs/remote-play.md](docs/remote-play.md)).
 - **Hacks**: turbo (hold or toggle F2), skip movies, unlock everything, the same randomness every time, straight to
   time trial or free roam.
 - **Languages**: the menus in 20 languages; the game itself also in Catalan, Galician and Basque.

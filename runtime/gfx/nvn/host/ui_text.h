@@ -205,7 +205,16 @@ typedef enum {
     UI_LAUNCH_UPDATE, UI_LAUNCH_UPDATE_FETCHING, UI_LAUNCH_UPDATE_FAILED, UI_LAUNCH_UPDATED,
     UI_LAUNCH_NO_GAME_DATA,   // the start screen's lower right: the player brings the game, the port ships none
     UI_MENU_UPDATE_CHECK, UI_MENU_UPDATE_CHECK_DESC,
-    UI_MENU_LAST_ID = UI_MENU_UPDATE_CHECK_DESC,
+    // Steam Remote Play Together (steam/steam_rpt.c), the Game tab's group: the buttons; CONNECTED "%d connected" (the
+    // guests) beside Invite; the notes of a greyed-out group (no App ID, the start screen, Steam not available)
+    UI_MENU_GROUP_RPT, UI_MENU_RPT_INVITE, UI_MENU_RPT_INVITE_DESC, UI_MENU_RPT_LINK, UI_MENU_RPT_LINK_DESC,
+    UI_MENU_RPT_CONNECTED, UI_MENU_RPT_NO_OVERLAY, UI_MENU_RPT_WAITING,
+    UI_MENU_RPT_NEED_APPID, UI_MENU_RPT_AT_START, UI_MENU_RPT_FAILED,
+    // notices: JOINED / LEFT "%s" (the guest's name); PAD "%d" (the player); KEYBOARD "%s ... %d"; FULL "%s";
+    // FAILED "%s" (Steam's reason, in English)
+    UI_NOTICE_RPT_JOINED, UI_NOTICE_RPT_LEFT, UI_NOTICE_RPT_PAD, UI_NOTICE_RPT_KEYBOARD, UI_NOTICE_RPT_FULL,
+    UI_NOTICE_RPT_FAILED,
+    UI_MENU_LAST_ID = UI_NOTICE_RPT_FAILED,
     UI_TEXT_COUNT
 } UiTextId;
 

@@ -40,6 +40,7 @@
 #include "host.h"
 #include "platform/platform.h"
 #include "sha256.h"
+#include "steam_rpt.h"
 #include "ui/launcher/launcher.h"
 
 #define MAX_MODULES 16
@@ -635,6 +636,9 @@ int main(int argc, char **argv) {
     log_open(!mode);
     if (!mode) {
         cfg.boot = cfg.seconds > 0;   // --seconds starts the game like --boot, with its checkpoints
+        // Remote Play Together (MKW_STEAM_APPID): before the boot creates the Vulkan device (the overlay) and scans
+        // the gamepads (Steam's virtual ones); a game run only, not the probes or the start screen
+        steam_rpt_start();
         rt_boot();
         return 0;
     }
