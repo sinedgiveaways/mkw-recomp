@@ -139,6 +139,8 @@ jobs:
           key: llvm-clang-${{ github.job }}-${{ hashFiles('tools/build/llvm_clang.py') }}
       - name: Setup tools
         run: uv run tools/build/dist.py --target windows
+      - name: Steam's steam_api64.dll for Remote Play Together (pinned sha256, docs/guides/remote-play.md)
+        run: uv run tools/build/steamlib.py --target windows
       - name: Zip
         run: uv run tools/build/release.py --target windows --version "${GITHUB_REF_NAME#v}"
       - uses: actions/upload-artifact@v7

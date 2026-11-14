@@ -25,6 +25,11 @@ def version_section(changelog: str, version: str) -> str:
     for name, body in zip(parts[1::2], parts[2::2], strict=True):
         if name == version:
             return body
+    # a fork's tag on top of a release (v0.1.10-rpt1: docs/guides/remote-play.md) takes that release's section unless it has
+    # its own, so tagging a rebased branch needs no CHANGELOG edit
+    base = version.split("-", 1)[0]
+    if base != version:
+        return version_section(changelog, base)
     sys.exit(f"CHANGELOG.md: no '## {version}' section")
 
 
