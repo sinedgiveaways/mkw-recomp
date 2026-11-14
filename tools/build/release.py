@@ -161,6 +161,9 @@ def _glibc_versions(text: str) -> list[str]:
 def windows(dist: Path, version: str) -> Path:
     out = OUT / f"mkw-recomp-{version}-windows-x64.zip"
     files = [dist / "mkw.exe", *(dist / d for d in WIN_DLLS), *sorted((dist / "setup").rglob("*"))]
+    # Remote Play Together: Steam's steam_api64.dll goes in only when tools/build/steamlib.py put it beside mkw.exe
+    # (the release workflow does; a local build without it packs the same zip as before)
+    files.append(dist / "steam_api64.dll")
     check_no_game(dist / "setup")
     top = Path("mkw-recomp")
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
