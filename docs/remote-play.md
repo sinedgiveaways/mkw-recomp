@@ -27,7 +27,9 @@ It is off by default and changes nothing until you set it up.
 
    It downloads Valve's SDK 1.65 copy (from the Steamworks.NET release, checked by sha256). Pass `--dest DIR` for
    another folder: the one that holds `mkw`. The Linux AppImage runs its copy of `mkw` in `~/.local/share/mkw-recomp`,
-   so that is the folder there.
+   so that is the folder there. The Windows zip of a tagged release (`.github/workflows/release.yml`) already holds
+   `steam_api64.dll`: the workflow runs this step before packing, and `tools/build/release.py` takes the DLL when it
+   is there.
 
 2. **The App ID.** In `mkw.ini` next to `mkw`:
 
@@ -92,3 +94,23 @@ for the guests' controllers (13/11/2026): start-up, every symbol bound (Linux an
 leaving, a guest's controller as player 2 with the host's Steam Input twin left out, a guest keyboard as player 3, the
 guest link, a missing overlay, and each failure (no library, no Steam, wrong App ID). Picking local multiplayer with too few controllers opens the invite list (13/11/2026, against the mock).
 A real session with friends over Steam has not been run yet.
+
+## Keeping a fork up to date
+
+A fork of mkw-recomp with these commits on a branch builds its own releases: pushing a `v*` tag runs
+`.github/workflows/release.yml`, which drafts a GitHub release with the Windows zip (Steam's DLL included) and the Linux
+AppImages. To carry the commits onto a new upstream release (`vX.Y.Z` here):
+
+```sh
+git remote add upstream https://github.com/adriadam10/mkw-recomp.git   # once
+git fetch upstream --tags
+git switch steam-rpt
+git rebase vX.Y.Z               # replays the Remote Play Together commits on the new release; fix any conflict, then
+                                # git add <file> && git rebase --continue
+git push --force-with-lease origin steam-rpt
+git tag vX.Y.Z-rpt1 && git push origin vX.Y.Z-rpt1                    # builds the release in the fork's Actions tab
+```
+
+The fork's Actions must be enabled once (Actions tab, "I understand my workflows"). The release is a draft until
+published from the Releases page. Its notes are the upstream release's CHANGELOG.md section (`tools/build/notes.py`
+takes `0.1.10` for `0.1.10-rpt1` when there is no `## 0.1.10-rpt1` section).
