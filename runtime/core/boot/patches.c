@@ -33,6 +33,7 @@
 #define UI_ROWS_HOST 0xf60       // patch page offset of host_ui_rows (set aspect)
 #define CAMERA_EVENT_HOST 0xf50  // patch page offset of host_camera_event (set camera, 1.8.0)
 #define UI_ROWS2_HOST 0xf40      // patch page offset of host_ui_rows2 (set aspect, 1.8.0)
+                                 // 0xe00-0xef0: race_scene.c, one per node (RT_RACE_HOST)
 // The guest functions the sets call or recognise, per game version (version.h; 1.0.0: main+0x233358 RenderBuffer
 // creation, main+0x8eb6b0 the render-buffer allocator setup that main+0x37b520 allocates from, main+0x67aa40 operator
 // new(size, heap, alignment), main+0x8eb9dc one pool of that allocator, main+0x922088 and main+0x15585a8 two
@@ -59,11 +60,19 @@ static int shadow_second_pool(Cpu *c);
 
 static uint64_t map_bytes(uint32_t size) { return 3 * 2 * (uint64_t)size * size; }   // 3 cascades of D16
 
+// 1.8.0's photo mode (with its stickers) makes targets of its own: at 1440 lines the game's pool has no room for them
+// and main+0xa66e0 reads a null block as soon as Minus is pressed in free roam (#305; foto5 crashed, foto4 at 1080
+// lines did not, 1.0.0 at 1440 did not: foto1). 128 MiB at 1440 lines, growing with the pixels, is a margin, not a
+// measure (the runtime's region only takes memory as the pool uses it); foto6 checks it at 1440.
+#define PHOTO_MIB_1440 128u
+
 // Hypothesis, measured in s255g: the game's 250 MiB pool holds the console's 1440-line targets with its 3072 map, so
 // the targets take the rest and grow with the pixels.
 static uint64_t second_pool_bytes(void) {
     uint64_t b = (uint64_t)rb_extra_mib << 20;
     if (shadow_size > 3072) b += map_bytes(shadow_size) - map_bytes(3072);
+    uint64_t lines = scene_lines ? scene_lines : 1440;   // original: the window's lines, at most 1440
+    if (rt_version()->number >= 180) b += ((uint64_t)PHOTO_MIB_1440 << 20) * lines * lines / (1440ull * 1440);
     if (scene_lines > 1440)
         b += ((250ull << 20) - map_bytes(3072)) * ((uint64_t)scene_lines * scene_lines - 1440ull * 1440) / (1440ull * 1440);
     return (b + 0xffff) & ~0xffffull;
@@ -408,6 +417,7 @@ void rt_patch_hosts(void) {
     if (g->npatch_sets) rt_register_host(g->patch_page + UI_ROWS_HOST, host_ui_rows);
     if (g->npatch_sets) rt_register_host(g->patch_page + UI_ROWS2_HOST, host_ui_rows2);
     if (g->npatch_sets) frame_rate_host(g->patch_page);
+    if (g->npatch_sets) race_scene_host(g->patch_page);
     if (g->npatch_sets) rt_register_host(g->patch_page + CAMERA_EVENT_HOST, host_camera_event);
     if (rt_version()->camera_service) {
         camera_absent_fn = hostfn_register("camera: absent", camera_absent);

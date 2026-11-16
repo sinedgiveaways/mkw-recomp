@@ -104,8 +104,15 @@ void vk_fsr_release(void);   // before the device goes away
 VkImageView vk_hdr_ui_target(VkCommandBuffer cb, uint32_t w, uint32_t h);
 void vk_hdr_ui_compose(VkCommandBuffer cb, VkImageView dst_view, VkFormat fmt, uint32_t w, uint32_t h);
 void vk_hdr_ui_release(void);   // before the device goes away
-// Queues the oldest present vk_present_blit or vk_present_blit_ahead left waiting.
-void vk_present_flip(void);
+// Queues the oldest present vk_present_blit or vk_present_blit_ahead left waiting; its present id (MKW_LATENCY with
+// present wait), else 0.
+uint64_t vk_present_flip(void);
+// ---- MKW_LATENCY (vk_latency.c): controller read to screen
+int vk_lat_on(void);
+uint64_t vk_lat_next_id(void);                                   // the next host present's id, 0 without present wait
+void vk_lat_flip(uint64_t slot, int first, int game, uint64_t id);   // a host present of the frame shown at slot
+void vk_lat_swapchain(int begin, VkSwapchainKHR sc);             // around vkCreateSwapchainKHR (it retires the old)
+void vk_lat_device(VkDevice device, int has_present_wait);                        // after the device: starts the present wait thread
 // vk_present_blit for frame generation: presents already waiting stay waiting, so the frames of one game frame are
 // all blitted at once and each vk_present_flip then queues the next at its time.
 void vk_present_blit_ahead(VkImage src, VkImageLayout layout, VkFormat fmt, int w, int h, const int crop[4]);
@@ -171,6 +178,8 @@ void vk_texture_release(const tex_t *t);   // TextureFinalize: the image stays f
 void vk_read_texels(const tex_t *t, const view_t *v, const NVNcopyRegion *r, uint8_t *dst, uint64_t row, uint64_t img);
 void vk_write_texels(const tex_t *t, const view_t *v, const NVNcopyRegion *r, const uint8_t *src, uint64_t row, uint64_t img);
 void vk_guest_written(uint64_t addr, uint64_t size);   // a host write write-watch may miss: textures there re-upload
+void vk_gpu_written_stamp(uint64_t addr, uint64_t size);   // a GPU write landed in guest memory (its fence): the same
+                                                           // stamp, but the mirror, which holds those bytes, skips it
 int vk_glyphs_due(void);      // per present: the button icon sheet's icons changed (ui/glyphs/glyphs.c); at most 10 times a second
 void vk_glyphs_redo(void);    // ... then, replays drained: it uploads again, redrawn
 int vk_pool_needs_drain(const pool_t *p);  // its GPU storage is guest memory: queued replays must be done first
@@ -279,6 +288,7 @@ int vk_mem_mirror_probe(uint64_t addr);   // --probe-vkexec: the pool at addr ge
 void vk_mem_class_log(const VkPhysicalDeviceProperties *p, const VkPhysicalDeviceMemoryProperties *m);   // once
 void vk_mem_census(uint64_t frame);               // at each present: pool census and traffic, logged at frame 1800 and,
                                                   // with MKW_TRACE=perf, every 1800 frames
+void vk_mem_replay_log(uint64_t frames);          // a capture replay's end: the mirror and shadow summaries over its frames
 // VRAM in use and its budget, summed over the DEVICE_LOCAL heaps. exact 1: VK_EXT_memory_budget (the whole process),
 // 0: this allocator's own allocations against the heap sizes. 0 when unknown.
 int vk_mem_vram(uint64_t *used, uint64_t *budget, int *exact);
@@ -677,7 +687,7 @@ VkPipeline vk_mesh_cs_compact_pipeline(VkPipelineLayout *layout);   // runtime/s
 // sets the rest: vkCmdSetViewportWithCount, vkCmdSetScissorWithCount, depth bias, blend constants, stencil compare and
 // write masks and references; vertex buffers with vkCmdBindVertexBuffers2 (strides NULL when
 // vk_pipeline_vertex_input_dynamic(), else from VkPipeState.vstream).
-void vk_pipeline_set_dynamic(VkCommandBuffer cb, const VkPipeState *s);
+void vk_pipeline_set_dynamic(VkCommandBuffer cb, const VkPipeState *s, const VkPipeState *last);   // last: NULL sets all
 int vk_pipeline_vertex_input_dynamic(void);    // 1: vertex input is VK_EXT_vertex_input_dynamic_state
 // What the bound state says of the shader of stage (GFX_STAGE_VS: attr_type from the vertex attribute formats;
 // GFX_STAGE_FS: out_type from the colour target formats).

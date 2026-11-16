@@ -54,6 +54,13 @@ static uint64_t vram_every(void) {
     return (uint64_t)n;
 }
 
+// A capture holds a few frames (build/cap/race: 3), so the per-60-frames summaries above never come in a replay: the
+// same lines once at its end, averaged over the frames it presented (mir-base, 14/11/2026).
+void vk_mem_replay_log(uint64_t frames) {
+    mirror_log(frames);
+    shadow_log(frames);
+}
+
 void vk_mem_census(uint64_t frame) {
     static uint64_t window_start;
     mem_early_log(frame);   // MKW_EARLY_READ
@@ -214,6 +221,8 @@ static void mirror_mode(int discrete) {
     const char *g = cfg_get("MKW_MIRROR_GAP");
     mirror_gap = g && *g ? atoi(g) : 2;
     if (mirror_gap < 0) mirror_gap = 0;
+    mirror_cpu_gen = rt_knob("MIRROR_CPU_GEN", "1");
+    shadow_cpu_gen = rt_knob("SHADOW_CPU_GEN", "1");
     // Submissions a region stays unwritten before it is frozen. 60 rather than 300: in a fight 100 of the 257 MiB
     // queried a frame lay in regions idle for 30-299 submissions, and a thaw by a write costs about 60 us.
     const char *fi = cfg_get("MKW_FREEZE_IDLE");

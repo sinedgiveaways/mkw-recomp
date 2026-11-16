@@ -104,6 +104,12 @@ def test_known_errors_and_regressions():
     assert classify.known_error(94, LAUNCHER, "v0.1.7", SIGS) is None
 
 
+def test_every_signature_links_its_wiki_section():
+    # the bot's duplicate reply sends the player to what they can do (wiki Troubleshooting, one section per row)
+    for s in SIGS:
+        assert s.wiki and s.wiki == s.wiki.lower() and " " not in s.wiki, s
+
+
 def test_still_happens_reopens():
     # #38: another player, a new log, under "fixed in v0.1.7"
     assert classify.still_happens(f"{LOG} Same error in v0.1.7 without GPL=0, freezes on title world map.", False)
@@ -144,3 +150,14 @@ def test_mods_from_the_log_line():
     log = "[host] cfg: read mkw.ini\n[host] mods: enabled ClassicGP, 30 FPS Lock\n[host] vk: gpu 0\n"
     assert classify.mods_enabled(log) == "ClassicGP, 30 FPS Lock"
     assert classify.mods_enabled("[host] cfg: read mkw.ini\n") is None
+
+
+def test_behind_the_newest_two():
+    rel = {"v0.1.8", "v0.1.9", "v0.1.10"}
+    assert classify.behind("v0.1.8", rel)
+    assert not classify.behind("v0.1.9", rel)
+    assert not classify.behind("v0.1.10", rel)
+    # labels that are not a published release never count as old
+    assert not classify.behind("v0.1.11", rel)
+    assert not classify.behind("unknown-version", rel)
+    assert not classify.behind("from-source", rel)

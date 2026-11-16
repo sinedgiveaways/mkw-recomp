@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "sm86/spec"))
 sys.path.insert(0, str(ROOT / "tools/prepare"))
 import prepare  # noqa: E402
+import gamesource  # noqa: E402  (after prepare: it puts recomp/ on the path)
 import gamecode  # noqa: E402
 import spec  # noqa: E402
 import update  # noqa: E402
@@ -98,6 +99,40 @@ def test_versions() -> None:
     assert update.version_key("dev") is None
 
 
+def test_romfs_version_matches_main() -> None:
+    # #315: 1.0.0's exefs/main with 1.8.0's RomFS passed the file count and crashed while warming up
+    import versions
+
+    v100, v180 = versions.VERSIONS
+    res = "System/Resource/ResourceSizeTable."
+    r100 = [f"{res}Product.100.Nin_Ounce_NVN2.rsizetable.zs", f"{res}Pilot.100.Nin_Ounce_NVN2.rsizetable.zs"]
+    r180 = [f"{res}Product.180.Nin_Ounce_NVN2.rsizetable.zs", "Layout/Title.sarc.zs"]
+    assert versions.romfs_mismatch(v100, r100) == "" and versions.romfs_mismatch(v180, r180) == ""
+    assert versions.romfs_mismatch(v100, r180) == "RomFS 1.8.0, exefs/main 1.0.0"
+    assert versions.romfs_mismatch(v180, r100) == "RomFS 1.0.0, exefs/main 1.8.0"
+    assert versions.romfs_mismatch(v100, ["Layout/Title.sarc.zs"]) == ""  # no marker: the file count decides
+
+
+@pytest.mark.parametrize("product, ok", [(100, True), (180, False)])
+def test_check_refuses_other_romfs(tmp_path: Path, monkeypatch, product: int, ok: bool) -> None:
+    # check() on a loose dump: 1.0.0's main (its build id in an NSO header) and a RomFS naming `product`
+    import versions
+
+    v100 = versions.VERSIONS[0]
+    (tmp_path / "exefs").mkdir()
+    (tmp_path / "exefs/main").write_bytes(b"NSO0" + bytes(0x3C) + bytes.fromhex(v100.main_build_id))
+    res = tmp_path / "romfs/System/Resource"
+    res.mkdir(parents=True)
+    (res / f"ResourceSizeTable.Product.{product}.Nin_Ounce_NVN2.rsizetable.zs").write_bytes(b"")
+    monkeypatch.setattr(gamesource, "count_files", lambda top, enough: enough)  # the file count is not under test
+    if ok:
+        assert prepare.check(tmp_path, tmp_path)[2] == v100
+    else:
+        with pytest.raises(prepare.Failed) as e:
+            prepare.check(tmp_path, tmp_path)
+        assert "RomFS 1.8.0, exefs/main 1.0.0" in str(e.value)
+
+
 @pytest.mark.parametrize("name", ["stale.old", "setup.old"])
 def test_clean_removes_old(tmp_path: Path, name: str) -> None:
     game = tmp_path / ODD
@@ -105,8 +140,22 @@ def test_clean_removes_old(tmp_path: Path, name: str) -> None:
     old = game / name
     old.mkdir() if name == "setup.old" else old.write_text("x")
     (game / "mkw.exe").write_text("keep")
-    update.clean(type("A", (), {"game": game})())
+    update.clean(type("A", (), {"game": game, "previous": None})())
     assert not old.exists() and not (game / "update").exists() and (game / "mkw.exe").exists()
+
+
+def test_clean_keeps_previous(tmp_path: Path) -> None:
+    # with --previous the replaced files go to update-previous/ under their own names, for the Tools page's Undo
+    game = tmp_path / ODD
+    (game / "update-previous").mkdir(parents=True)
+    (game / "update-previous/gone.dll").write_text("older still")
+    (game / "mkw.exe.old").write_text("0.1.10")
+    (game / "lang.old").mkdir()
+    update.clean(type("A", (), {"game": game, "previous": "0.1.10"})())
+    keep = game / "update-previous"
+    assert (keep / "mkw.exe").read_text() == "0.1.10" and (keep / "lang").is_dir()
+    assert (keep / "version").read_text().strip() == "0.1.10" and not (keep / "gone.dll").exists()
+    assert not list(game.glob("*.old"))
 
 
 def test_package_sources_import(tmp_path: Path) -> None:
@@ -239,9 +288,9 @@ def test_unpack_uses_launcher_not_installation(tmp_path: Path, monkeypatch: pyte
         calls.append(argv)
         return process
 
-    monkeypatch.setattr(prepare.subprocess, "Popen", start)
+    monkeypatch.setattr(gamesource.subprocess, "Popen", start)
     package = tmp_path / "Dump ñ.nx"
-    assert prepare.unpack(runtime, package, game, "exefs") == "unpack: 1 files, 64 bytes"
+    assert gamesource.unpack(runtime, package, game, "exefs") == "unpack: 1 files, 64 bytes"
     assert calls == [[str(runtime / ("mkw.exe" if os.name == "nt" else "mkw")),
                       "--unpack", str(package), str(game), "exefs"]]
 
@@ -250,10 +299,10 @@ def test_find_game_packages(tmp_path: Path) -> None:
     # a .nup or .nx package is the source as one file (its exefs and romfs both); any other file is refused
     for name, magic in (("g.nup", b"NUP\x01"), ("g.nx", b"NXAR")):
         (tmp_path / name).write_bytes(magic + bytes(60))
-        assert prepare.find_game(tmp_path / name) == (tmp_path / name, tmp_path / name)
+        assert gamesource.find_game(tmp_path / name) == (tmp_path / name, tmp_path / name)
     (tmp_path / "g.zip").write_bytes(b"PK\x03\x04" + bytes(60))
     with pytest.raises(prepare.Failed):
-        prepare.find_game(tmp_path / "g.zip")
+        gamesource.find_game(tmp_path / "g.zip")
 
 
 def test_regenerate_if_cleaned(tmp_path: Path) -> None:
@@ -348,3 +397,32 @@ def test_package_has_the_launchers_tools() -> None:
         path = f"tools/{rel}"
         assert any(path == s or path.startswith(s.rstrip("/") + "/") for s in sources), f"{path} not in dist.py SOURCES"
         assert (ROOT / path).is_file(), path
+
+
+def test_lastrun_reads_how_the_last_game_ended() -> None:
+    # tools/prepare/lastrun.py: the start screen's notice; a wrong "known" sends a player away from a new bug
+    import lastrun
+
+    sigs = [{"issue": 22, "all": ["instruction pointer invalid"]},
+            {"issue": 29, "all": ["spec.py", "args.cc.split"], "fixed": "v0.1.5"}]  # fmt: skip
+    assert lastrun.verdict("x\n[host] gfx: window closed; exiting\n", "0.1.11", sigs) == "clean"
+    assert lastrun.verdict("vk: device fault: Instruction pointer invalid\n", "0.1.11", sigs) == "known 22"
+    assert lastrun.verdict("spec.py ... args.cc.split()\n", "0.1.4", sigs) == "fixed 29 v0.1.5"
+    # on the release that fixed it, or later, the same text is a regression: still pointed to its issue
+    assert lastrun.verdict("spec.py ... args.cc.split()\n", "0.1.5", sigs) == "known 29"
+    assert lastrun.verdict("[host] FATAL: SIGSEGV at host 0x1\n", "0.1.11", sigs) == "crash"
+    assert lastrun.verdict("[host] frame 300\n", "0.1.11", sigs) == ""   # killed or power off: nothing to say
+    assert (ROOT / "tools/github/signatures.toml").is_file()
+
+
+@pytest.mark.parametrize("text", ['{"meta": {', "{}"])
+def test_broken_spec_not_reused(tmp_path: Path, text: str) -> None:
+    """A spec the decoder rejects is built again, not reused by every later setup (issue #325)."""
+    import shaderstep  # noqa: PLC0415
+
+    broken = tmp_path / "instructions.json"
+    broken.write_text(text)
+    assert not shaderstep.spec_loads(broken)
+    good = ROOT / "build/sm86/instructions.json"  # built on this machine, never in the repo
+    if good.is_file():
+        assert shaderstep.spec_loads(good)

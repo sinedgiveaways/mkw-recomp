@@ -6,11 +6,12 @@ Why apart: prepare.py holds the steps; this is what they run with. Not run on it
 
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools/build"))
-import build  # (mem_total_gb)
+import build  # (mem_total_gb, windows_memory_gb)
 
 
 def emit(*words: object) -> None:
@@ -128,14 +129,10 @@ def own_children() -> None:
 def mem_available_gb() -> float:
     """Memory free for new work now (MemAvailable on Linux, ullAvailPhys on Windows); 8 when unknown."""
     if os.name == "nt":
-        import ctypes
-
-        class Status(ctypes.Structure):  # MEMORYSTATUSEX
-            _fields_ = [("length", ctypes.c_uint32), ("load", ctypes.c_uint32), ("total", ctypes.c_uint64),
-                        ("avail", ctypes.c_uint64), ("rest", ctypes.c_uint64 * 5)]  # fmt: skip
-
-        st = Status(length=ctypes.sizeof(Status))
-        return st.avail / 2**30 if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(st)) else 8.0
+        try:
+            return build.windows_memory_gb()[1]
+        except OSError:
+            return 8.0
     try:
         with open("/proc/meminfo") as f:
             for line in f:
@@ -158,3 +155,17 @@ def mem_gb() -> float:
         return build.mem_total_gb()
     except OSError:
         return 8.0
+
+
+def run(cmd: list[str], env: dict[str, str] | None = None, progress_prefix: str = "") -> None:
+    """A tool's run; its 'progress n total' lines (translate.py) pass through, the rest goes to stderr."""
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
+    tail = []
+    for line in p.stdout:
+        if progress_prefix and line.startswith(progress_prefix):
+            emit(line.strip())
+        else:
+            sys.stderr.write(line)
+            tail = (tail + [line.strip()])[-5:]
+    if p.wait():
+        raise Failed(f"{Path(cmd[1] if len(cmd) > 1 else cmd[0]).name} failed: {' / '.join(tail)}")

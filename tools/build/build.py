@@ -100,7 +100,26 @@ WINDOWS = Target(
 )  # fmt: skip
 
 
+def windows_memory_gb() -> tuple[float, float]:
+    """Windows' total and available physical memory in GiB (GlobalMemoryStatusEx, MEMORYSTATUSEX); OSError if the
+    call fails. Shared with tools/prepare/machine.py mem_available_gb."""
+    import ctypes
+
+    class Status(ctypes.Structure):  # MEMORYSTATUSEX
+        _fields_ = [("length", ctypes.c_uint32), ("load", ctypes.c_uint32), ("total", ctypes.c_uint64),
+                    ("avail", ctypes.c_uint64), ("rest", ctypes.c_uint64 * 5)]  # fmt: skip
+
+    st = Status(length=ctypes.sizeof(Status))
+    if not ctypes.WinDLL("kernel32", use_last_error=True).GlobalMemoryStatusEx(ctypes.byref(st)):
+        raise ctypes.WinError(ctypes.get_last_error())
+    return st.total / 2**30, st.avail / 2**30
+
+
 def mem_total_gb() -> float:
+    """The machine's memory in GiB, for the job counts (build.py --job-mem-gb, prepare.py fit). Windows has no
+    /proc/meminfo."""
+    if os.name == "nt":
+        return windows_memory_gb()[0]
     with open("/proc/meminfo") as f:
         for line in f:
             if line.startswith("MemTotal:"):
@@ -190,7 +209,7 @@ def defaults_glue(exefs: Path, romfs: Path, dist: bool) -> str:
 
 
 # What the game code library calls in the runtime (runtime/cpu/cpu.h): the executable exports them.
-RT_EXPORTS = ("rt_dispatch", "rt_svc", "rt_udf", "rt_ticks", "rt_spin_gate", "fnprof_hit")
+RT_EXPORTS = ("rt_dispatch", "rt_sj_owner", "rt_svc", "rt_udf", "rt_ticks", "rt_spin_gate", "fnprof_hit")
 
 
 def ninja_file(target: Target, gen: Path, out: Path, rt_extra: list[str], dist: Path | None,
