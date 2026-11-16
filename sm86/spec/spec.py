@@ -19,6 +19,7 @@ Usage: python sm86/spec/spec.py [--out build/sm86] [--cache scratchpad/nvidia] [
 
 import argparse
 import hashlib
+import ssl
 import json
 import os
 import re
@@ -75,10 +76,18 @@ PTX = """.version 8.7
 FETCH_TRIES = 3
 
 
+def https_context() -> ssl.SSLContext:
+    """The CA file the setup chose (prepare.py exports it as SSL_CERT_FILE when the system's store is empty or
+    unreadable to this Python), explicitly: on Windows the default context reads the system store whatever the variable
+    says, and a certificate in it Python cannot parse stops every download (issue #456)."""
+    ca = os.environ.get("SSL_CERT_FILE")
+    return ssl.create_default_context(cafile=ca) if ca else ssl.create_default_context()
+
+
 def download(url: str, part: Path) -> str:
     """The file at url into part; a short read or a broken connection is the reason, else ""."""
     try:
-        with urllib.request.urlopen(url, timeout=60) as r, open(part, "wb") as f:
+        with urllib.request.urlopen(url, timeout=60, context=https_context()) as r, open(part, "wb") as f:
             size = int(r.headers.get("Content-Length") or 0)
             shutil.copyfileobj(r, f)
     except OSError as e:

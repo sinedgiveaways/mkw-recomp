@@ -530,6 +530,8 @@ static void destroy_all(void) {
     if (g_vk.device) vk_astc_release(), vk_crumbs_release();
     if (g_vk.timeline) vkDestroySemaphore(g_vk.device, g_vk.timeline, NULL);
     vk_headroom_stop();
+    vk_tex_pool_stop();
+    vk_sparse_shutdown();
     if (g_vk.vma) vmaDestroyAllocator(g_vk.vma);
     if (g_vk.device) vkDestroyDevice(g_vk.device, NULL);
     if (g_vk.messenger) {

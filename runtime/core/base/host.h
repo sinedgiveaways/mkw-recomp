@@ -327,10 +327,13 @@ typedef struct {
     double hist[FPS_AUTO_HIST], real[8];
     unsigned head, n, since, n_real, hold, hold_s;
     int iv, downed;
+    double stall_ms;   // how long the frames have been slower than any interval holds (fps_auto.c)
+    int fits;          // the last frames before it fitted the interval
 } FpsAuto;
 void fps_auto_reset(FpsAuto *a);                           // interval 1, no history
 int fps_auto_step(FpsAuto *a, double measured_ms, double real_ms);   // a frame's game measure and real period in,
                                                                      // the interval to use out
+int probe_discord(void);                                   // discord_probe.c: Rich Presence against the local Discord
 int probe_fps(void);                                       // fps_probe.c: the controller on synthetic frame times
 void lat_input_read(void);                                 // vk_latency.c MKW_LATENCY: the game read the controller
 void lat_game_present(uint64_t slot);                      // ... and presented the frame shown at slot (pacer, ns)

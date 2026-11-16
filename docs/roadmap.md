@@ -69,8 +69,9 @@ screen by screen against the console.
   runtime's addresses) is redone for it; the game cannot be shared, so this needs someone who owns that version to run
   the tools on their own dump and contribute the result.
 - 1.8.0 (11/11/2026): recognised by the setup (`recomp/versions.py`), its own patch table
-  (`recomp/patches-mkw-180.txt`: spin waits, zstd, output size and every set of 1.0.0 — aspect, shadow, seed and LAN
-  play) and runtime row (`runtime/core/boot/version.c`: frame update and game clock, zstd, NVN2 proc table and
-  `nvnDeviceGetInteger` answers, boot checkpoint, the new `subsdk1` module's constructors). Still to find in its
+  (`recomp/patches-mkw-180.txt`: spin waits, zstd, output size and every set of 1.0.0 — aspect, vertplus (the tall
+  Window's race FOV), shadow, seed and LAN play) and runtime row (`runtime/core/boot/version.c`: frame update and game
+  clock, zstd, NVN2 proc table and `nvnDeviceGetInteger` answers, boot checkpoint, the new `subsdk1` module's
+  constructors). Still to find in its
   executable: the menu focus probe; to check in a run: the 30 NVN2 procs new in its sdk (weak stubs but three
   scheduling hints), its 43 new shader stages and the button icon sheet's hash.

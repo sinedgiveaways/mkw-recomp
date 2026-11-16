@@ -648,7 +648,11 @@ static void present_image(VkImage src, VkImageLayout layout, VkFormat fmt, int w
     if (cy + ch > h) ch = h - cy;
     // A full-screen movie (the cups') on an ultrawide output (MKW_ASPECT): its middle 16:9 between black bars, as the
     // console shows it; the 2D keeps the movie there (patches.c host_ui_proj)
-    if (g_aspect && ov_movie_playing() && ch * 16 / 9 < cw) cx += (cw - ch * 16 / 9) / 2, cw = ch * 16 / 9;
+    int movie = g_aspect && ov_movie_playing() && ch * 16 / 9 < cw;
+    if (movie) cx += (cw - ch * 16 / 9) / 2, cw = ch * 16 / 9;
+    // The picture's shape is MKW_ASPECT's, not the crop's: 1.8.0 draws the tall Window's picture (a camera of 1.600 in
+    // a 16:9 buffer) at 2560x1440 and crops to it, where 1.0.0 scales it to the whole 1280x800 output itself
+    int fit_w = g_aspect && !movie ? (int)(ch * g_aspect + 0.5f) : cw;
     window_settings_live();
     // The menu overlay: laid out before recording (its first frame starts the ImGui back end and uploads the font)
     const char *menu_shot = NULL;
@@ -674,7 +678,7 @@ static void present_image(VkImage src, VkImageLayout layout, VkFormat fmt, int w
                  VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
     const int rect[4] = {cx, cy, cw, ch};
     int to[4];   // where the picture goes in the swapchain image: {x, y, w, h}
-    gfx_fit_rect(cw, ch, (int)g_sc_vis.width, (int)g_sc_vis.height, to);
+    gfx_fit_rect(fit_w, ch, (int)g_sc_vis.width, (int)g_sc_vis.height, to);
     if (!src || to[2] != (int)g_sc_ext.width || to[3] != (int)g_sc_ext.height) {   // black bars, or all black
         VkClearColorValue black = {.float32 = {0, 0, 0, 1}};
         VkImageSubresourceRange all = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};

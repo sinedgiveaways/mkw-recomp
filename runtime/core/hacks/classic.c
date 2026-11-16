@@ -17,6 +17,13 @@
 // game's memory on a thread of its own (classic_poll). Steam Deck, 15/11/2026: with the setting on at start
 // (classic4) and switched on, off and on again during the Mushroom Cup's first race (classiclive2), the second race is
 // Crown City for 3 laps; switched in the archive only after start (classiclive1), it stays the intermission.
+//
+// Classic VS (MKW_CLASSIC_VS, Hacks tab): a VS race after the first, whatever the Courses rule (Tour, Choose,
+// Random), drives the route from the course before to the next one: an intermission from that course's area's
+// CourseEx list (its routes to its neighbours, 202 in 1.8.0). Classic VS puts in each route's place its destination's
+// course, as for the cups, so every VS race is laps on one course. The loading screen then shows the next course
+// without the line of a route. Steam Deck, 16/11/2026, the archive changed in an overlay (romfs_patches): VS races
+// 2 and 3 on courses for 3 laps, no errors.
 #include <stdlib.h>
 #include <string.h>
 #ifndef _WIN32
@@ -138,17 +145,30 @@ static const ClassicCourse *classic_course(const ClassicCourse *c, int n, uint32
     return NULL;
 }
 
-// One CourseId that Classic changes: the game's value, Classic's and its cup (0-7, in the archive's order).
-typedef struct { uint32_t orig, classic, cup; } ClassicSlot;
-#define CLASSIC_SLOTS 64   // 24 in 1.8.0
+// One CourseId that Classic changes: the game's value, Classic's, its group (a cup's intermissions or an area's
+// routes, in the archive's order: they lie at one stride in the game's memory too) and which setting it follows.
+enum { CLASSIC_GP, CLASSIC_VS };
+typedef struct { uint32_t orig, classic; uint16_t group; uint8_t kind; } ClassicSlot;
+#define CLASSIC_SLOTS 512   // 1.8.0: 24 in the cups, 202 routes in the areas
 
-// The intermissions of the Grand Prix cups in s (the decompressed archive, n bytes) and their destinations' courses,
-// into rec (CLASSIC_SLOTS entries): their number. write: the courses go into s too.
-static int classic_patch(uint8_t *s, size_t n, ClassicSlot *rec, int write) {
+// The destination's course of intermission id, NULL when it has none.
+static const ClassicCourse *classic_dest(const ClassicCourse *c, int nc, const ClassicArea *a, int na, uint32_t id) {
+    const ClassicCourse *from = classic_course(c, nc, id), *to = NULL;
+    if (!from || !from->inter) return NULL;
+    for (int k = 0; k < na && !to; k++)
+        if (a[k].key == from->dest) to = classic_course(c, nc, a[k].course);
+    return to && !to->inter ? to : NULL;
+}
+
+// The intermissions in s (the decompressed archive, n bytes) and their destinations' courses, into rec
+// (CLASSIC_SLOTS entries): their number. Those of the Grand Prix cups (MKW_CLASSIC_GP) and every area's routes to its
+// neighbours (CourseAreaGParam CourseEx, MKW_CLASSIC_VS: a VS race after the first drives the route from the course
+// before to the one chosen). write[kind]: those courses go into s too.
+static int classic_patch(uint8_t *s, size_t n, ClassicSlot *rec, const int write[2]) {
     ClassicCourse *course = calloc(CLASSIC_COURSES, sizeof *course);
     ClassicArea *area = calloc(CLASSIC_COURSES * 2, sizeof *area);
     char cups[CLASSIC_CUPS][96];
-    int ncourse = 0, narea = 0, ncups = 0, changed = 0, cupno = -1;
+    int ncourse = 0, narea = 0, ncups = 0, changed = 0, group = 0;
     if (!course || !area) { free(course); free(area); return 0; }
     const char *name, *st;
     size_t off, len;
@@ -196,64 +216,95 @@ static int classic_patch(uint8_t *s, size_t n, ClassicSlot *rec, int write) {
         int in_gp = 0;
         for (int j = 0; j < ncups && !in_gp; j++) in_gp = strlen(cups[j]) == sl && !strncmp(cups[j], st, sl);
         if (!in_gp) continue;
-        cupno++;
         uint8_t *list = byml_get(b, len, u32(b + 12), "CourseList"), t;
         for (uint32_t j = 0;; j++) {
             uint32_t at = byml_elem(b, len, list, j, &t);
             if (!at) break;
             uint8_t *id = t == 0xC1 ? byml_get(b, len, u32(b + at), "CourseId") : NULL;
             if (!id || (id[3] != 0xD3 && id[3] != 0xD1)) continue;
-            const ClassicCourse *from = classic_course(course, ncourse, u32(id + 4)), *to = NULL;
+            const ClassicCourse *from = classic_course(course, ncourse, u32(id + 4));
             if (!from || !from->inter) continue;
-            for (int k = 0; k < narea && !to; k++)
-                if (area[k].key == from->dest) to = classic_course(course, ncourse, area[k].course);
-            if (!to || to->inter) {
+            const ClassicCourse *to = classic_dest(course, ncourse, area, narea, from->id);
+            if (!to) {
                 rt_log("classic grand prix: %.*s: no course for %s, kept", (int)sl, st, from->name);
                 continue;
             }
             if (changed >= CLASSIC_SLOTS) break;
             rt_log("classic grand prix: %.*s race %u: %s instead of %s", (int)sl, st, j + 1, to->name, from->name);
-            rec[changed++] = (ClassicSlot){from->id, to->id, (uint32_t)cupno};
-            if (write) memcpy(id + 4, &to->id, 4);   // little-endian, as the BYML
+            rec[changed++] = (ClassicSlot){from->id, to->id, (uint16_t)group, CLASSIC_GP};
+            if (write[CLASSIC_GP]) memcpy(id + 4, &to->id, 4);   // little-endian, as the BYML
         }
+        group++;
     }
+    int routes = 0;
+    for (uint32_t i = 0; sarc_member(s, n, i, &name, &off, &len); i++) {
+        uint8_t *b = s + off;
+        if (strncmp(name, "Gyml/CourseAreaGParam/", 22) || len < 16 || memcmp(b, "YB", 2)) continue;
+        uint8_t *list = byml_get(b, len, u32(b + 12), "CourseEx"), t;
+        for (uint32_t j = 0; changed < CLASSIC_SLOTS; j++) {
+            uint32_t at = byml_elem(b, len, list, j, &t);
+            if (!at) break;
+            const ClassicCourse *to = t == 0xD3 || t == 0xD1 ? classic_dest(course, ncourse, area, narea, u32(b + at)) : NULL;
+            if (!to) continue;
+            rec[changed++] = (ClassicSlot){u32(b + at), to->id, (uint16_t)group, CLASSIC_VS};
+            if (write[CLASSIC_VS]) memcpy(b + at, &to->id, 4);
+            routes++;
+        }
+        group++;
+    }
+    rt_log("classic vs: %d routes between the courses", routes);
     if (!ncups) rt_log("classic grand prix: no cups in GrandprixSettingGParam/Grandprix: the game's own");
     free(course);
     free(area);
     return changed;
 }
 
-// ---- live: the game's own copies of the cups
+// ---- live: the game's own copies of the cups and the routes
 
-#define LIVE_STRIDE 1024   // the largest stride between a cup's intermissions that the scan tries, in bytes
-#define LIVE_HITS 256
+#define LIVE_STRIDE 1024   // the largest stride between a group's CourseIds that the scan tries, in bytes
+#define LIVE_HITS 1024
+#define LIVE_MIN 3         // a group is looked for by its first three: shorter ones are not switched live
 
 static struct {
     ClassicSlot slot[CLASSIC_SLOTS];
-    int nslot, on, busy;
+    int nslot, busy;
+    int on[2];     // what the game's copies hold: MKW_CLASSIC_GP, MKW_CLASSIC_VS
+    int want[2];   // what the running scan writes
 } g_live;
 
-// Slot i starts a cup's three intermissions (races 2-4).
-static int live_first(const ClassicSlot *sl, int n, int i) {
-    return i + 2 < n && sl[i].cup == sl[i + 1].cup && sl[i].cup == sl[i + 2].cup && (!i || sl[i - 1].cup != sl[i].cup);
+static const char *const kKey[2] = {"MKW_CLASSIC_GP", "MKW_CLASSIC_VS"};
+
+// The number of slots in the group that starts at slot i, 0 when i does not start one of at least LIVE_MIN.
+static int live_group(const ClassicSlot *sl, int n, int i) {
+    if (i && sl[i - 1].group == sl[i].group) return 0;
+    int k = 1;
+    while (i + k < n && sl[i + k].group == sl[i].group) k++;
+    return k >= LIVE_MIN ? k : 0;
 }
 
-typedef struct { uint64_t at; int first, stride; } LiveHit;
+typedef struct { uint64_t at; int first, count, stride; } LiveHit;
 
-// The hits in the n words of w at guest address base: a cup's three intermissions, all the game's values or all
-// Classic's, at one stride.
+// Whether the count words from w at stride d (in words) hold the group's values from slot i, all the game's or all
+// Classic's.
+static int live_group_at(const uint32_t *w, uint64_t d, const ClassicSlot *sl, int i, int count, int classic) {
+    for (int k = 0; k < count; k++)
+        if (w[k * d] != (classic ? sl[i + k].classic : sl[i + k].orig)) return 0;
+    return 1;
+}
+
+// The hits in the nw words of w at guest address base: a group's CourseIds at one stride.
 static int live_words(const uint32_t *w, uint64_t nw, uint64_t base, const ClassicSlot *sl, int n, const uint8_t *bits,
                       LiveHit *hit, int nhit) {
     for (uint64_t k = 0; k < nw; k++) {
         uint32_t v = w[k];
         if (!(bits[(v & 0xffff) >> 3] & 1 << (v & 7))) continue;
         for (int i = 0; i < n; i++) {
-            if (!live_first(sl, n, i) || (v != sl[i].orig && v != sl[i].classic)) continue;
-            int c = v == sl[i].classic;
-            uint32_t v1 = c ? sl[i + 1].classic : sl[i + 1].orig, v2 = c ? sl[i + 2].classic : sl[i + 2].orig;
-            for (uint64_t d = 1; d <= LIVE_STRIDE / 4 && k + 2 * d < nw; d++)
-                if (w[k + d] == v1 && w[k + 2 * d] == v2 && nhit < LIVE_HITS)
-                    hit[nhit++] = (LiveHit){base + k * 4, i, (int)d * 4};
+            if (v != sl[i].orig && v != sl[i].classic) continue;
+            int count = live_group(sl, n, i), c = v == sl[i].classic;
+            if (!count) continue;
+            for (uint64_t d = 1; d <= LIVE_STRIDE / 4 && k + (uint64_t)(count - 1) * d < nw; d++)
+                if (live_group_at(w + k, d, sl, i, count, c) && nhit < LIVE_HITS)
+                    hit[nhit++] = (LiveHit){base + k * 4, i, count, (int)d * 4};
         }
     }
     return nhit;
@@ -262,7 +313,7 @@ static int live_words(const uint32_t *w, uint64_t nw, uint64_t base, const Class
 // The scan takes seconds: a candidate may have been freed or reused before it is written.
 static int live_still_matches(const LiveHit *h, const ClassicSlot *sl) {
     int original = 1, classic = 1;
-    for (int k = 0; k < 3; k++) {
+    for (int k = 0; k < h->count; k++) {
         uint64_t at = h->at + (uint64_t)k * (uint64_t)h->stride, end;
         int state = plat_mem_state(at, at + 4, &end);
         if ((state != PLAT_PROT_RW && state != PLAT_PROT_READ) || end < at + 4) return 0;
@@ -274,13 +325,14 @@ static int live_still_matches(const LiveHit *h, const ClassicSlot *sl) {
 }
 
 static void live_scan(void *arg) {
-    int on = (int)(intptr_t)arg, n = g_live.nslot, nhit = 0;
+    (void)arg;
+    int n = g_live.nslot, nhit = 0, want[2] = {g_live.want[0], g_live.want[1]};
     const ClassicSlot *sl = g_live.slot;
-    static uint8_t bits[8192];   // the low 16 bits of each cup's first intermission, both values: a quick no
+    static uint8_t bits[8192];   // the low 16 bits of each group's first CourseId, both values: a quick no
     static LiveHit hit[LIVE_HITS];
     memset(bits, 0, sizeof bits);
     for (int i = 0; i < n; i++)
-        if (live_first(sl, n, i))
+        if (live_group(sl, n, i))
             for (int c = 0; c < 2; c++) {
                 uint32_t v = c ? sl[i].classic : sl[i].orig;
                 bits[(v & 0xffff) >> 3] |= (uint8_t)(1 << (v & 7));
@@ -315,20 +367,23 @@ static void live_scan(void *arg) {
             a = b;
         }
     }
-    int applied = 0;
+    int applied[2] = {0, 0};
     for (int h = 0; h < nhit; h++) {
+        int kind = sl[hit[h].first].kind;
         if (!live_still_matches(&hit[h], sl)) continue;
-        mem_thaw(hit[h].at, (uint64_t)hit[h].stride * 2 + 4);   // a frozen region takes writes again
+        mem_thaw(hit[h].at, (uint64_t)hit[h].stride * (uint64_t)(hit[h].count - 1) + 4);   // a frozen region takes writes
         if (!live_still_matches(&hit[h], sl)) continue;
-        for (int k = 0; k < 3; k++) {
+        for (int k = 0; k < hit[h].count; k++) {
             const ClassicSlot *s = &sl[hit[h].first + k];
             __atomic_store_n((uint32_t *)(uintptr_t)(hit[h].at + (uint64_t)k * (uint64_t)hit[h].stride),
-                             on ? s->classic : s->orig, __ATOMIC_RELAXED);
+                             want[kind] ? s->classic : s->orig, __ATOMIC_RELAXED);
         }
-        applied++;
+        applied[kind]++;
     }
-    rt_log("classic grand prix: %s for future races: %d places in the game's memory (%d stale skipped, %.0f MiB in %.1f s)",
-           on ? "on" : "off", applied, nhit - applied, scanned / 1048576.0, (plat_now_ns() - t0) / 1e9);
+    rt_log("classic: grand prix %s, vs %s for future races: %d and %d places in the game's memory (%d stale skipped, "
+           "%.0f MiB in %.1f s)", want[0] ? "on" : "off", want[1] ? "on" : "off", applied[0], applied[1],
+           nhit - applied[0] - applied[1], scanned / 1048576.0, (plat_now_ns() - t0) / 1e9);
+    if (nhit == LIVE_HITS) rt_log("classic: %d places found, more were not looked at", nhit);
     __atomic_store_n(&g_live.busy, 0, __ATOMIC_RELEASE);
 }
 
@@ -337,12 +392,13 @@ void classic_seen(void *p, size_t n) {
     size_t len;
     if (n < 0x20 || memcmp(s, "SARC", 4) || g_live.nslot) return;
     if (!sarc_find(s, n, "Gyml/GrandprixSettingGParam/Grandprix.game__GrandprixSettingGParam.bgyml", &len)) return;
-    int on = cfg_bool("MKW_CLASSIC_GP");
+    int on[2] = {cfg_bool(kKey[0]), cfg_bool(kKey[1])};
     int k = classic_patch(s, n, g_live.slot, on);
-    g_live.on = on;
+    g_live.on[0] = on[0], g_live.on[1] = on[1];
     __atomic_store_n(&g_live.nslot, k, __ATOMIC_RELEASE);
-    // none when a mod already made the cups classic
-    rt_log("classic grand prix: %d intermissions in the cups, %s", k, on ? "on" : "off (the Hacks tab switches it)");
+    // none when a mod already made them classic
+    rt_log("classic: %d intermissions in the cups and routes, grand prix %s, vs %s (the Hacks tab switches them)", k,
+           on[0] ? "on" : "off", on[1] ? "on" : "off");
 }
 
 void classic_poll(void) {
@@ -351,12 +407,13 @@ void classic_poll(void) {
     if (v == seen || !__atomic_load_n(&g_live.nslot, __ATOMIC_ACQUIRE) || __atomic_load_n(&g_live.busy, __ATOMIC_ACQUIRE))
         return;   // a change during a scan: on the frame after it
     seen = v;
-    int on = cfg_bool("MKW_CLASSIC_GP");
-    if (on == g_live.on) return;
-    g_live.on = on;
+    int on[2] = {cfg_bool(kKey[0]), cfg_bool(kKey[1])};
+    if (on[0] == g_live.on[0] && on[1] == g_live.on[1]) return;
+    int was[2] = {g_live.on[0], g_live.on[1]};
+    g_live.on[0] = g_live.want[0] = on[0], g_live.on[1] = g_live.want[1] = on[1];
     __atomic_store_n(&g_live.busy, 1, __ATOMIC_RELEASE);
-    if (!plat_thread_spawn(live_scan, (void *)(intptr_t)on, "classic", 64 << 10)) {
-        rt_log("classic grand prix: no thread for the switch");
-        g_live.on = !on, g_live.busy = 0;
+    if (!plat_thread_spawn(live_scan, NULL, "classic", 64 << 10)) {
+        rt_log("classic: no thread for the switch");
+        g_live.on[0] = was[0], g_live.on[1] = was[1], g_live.busy = 0;
     }
 }

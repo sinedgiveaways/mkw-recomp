@@ -17,6 +17,7 @@
 #include <string.h>
 
 #include "imgui.h"
+#include "ui/menu/id_check.h"
 #include "imgui_internal.h"   // SetFocusID, NavCursorVisible
 #include "backends/imgui_impl_vulkan.h"
 #include "ui/menu/binds_page.h"
@@ -175,6 +176,7 @@ static void make_context(void) {
     io.BackendPlatformName = "mkw_menu";
     menu_look_style(g_base_style);
     ImGui::GetStyle() = g_base_style;
+    ui_id_check_init();
     g_ctx_ok = 1;
 }
 
@@ -688,7 +690,7 @@ extern "C" int menu_overlay_frame(uint64_t frame, const MenuTarget *t, const cha
     if (g_test.next_set < g_test.n_sets && frame >= g_test.sets[g_test.next_set].frame) test_apply_sets(frame);
     if (g_perf_save.exchange(0)) cfg_save();
     perf_tick(plat_now_ns(), frame, t);
-    classic_poll();   // MKW_CLASSIC_GP changed: the cups in the game's memory (core/hacks/classic.c)
+    classic_poll();   // MKW_CLASSIC_GP or _VS changed: the cups and routes in the game's memory (core/hacks/classic.c)
     bool open = g_open.load(std::memory_order_relaxed);
     if (!open && g_choice_up.load()) choice_answer(-1);   // F1 or Esc closed the menu over a choice: no answer
     if (!open) {
@@ -745,6 +747,7 @@ extern "C" int menu_overlay_frame(uint64_t frame, const MenuTarget *t, const cha
         plat_mutex_unlock(&ev_lock);
     }
     ImGui_ImplVulkan_NewFrame();
+    ui_id_check("in-game menu");
     ImGui::NewFrame();
     if (open && g_choice_up.load()) layout_choice(t->width, t->height, scale);
     else if (open) layout_menu(t->width, t->height, scale);

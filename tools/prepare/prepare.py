@@ -16,7 +16,8 @@ Steps, into --game (by default the folder of mkw / mkw.exe):
   shaders   the SM86 spec built here from NVIDIA's nvdisasm (sm86/spec/spec.py, into sm86/; never shipped), then
             tools/shaders/extract.py and translate.py into spirv/
   warm      the game run once for a minute: the driver's pipeline cache and the pipeline keys for the first start
-  cleanup   setup-work removed but its obj/: the next update compiles only the chunks whose C changed (gamecode.py)
+  cleanup   setup-work removed but its obj/ and zig-cache/: the next update compiles only the chunks whose C changed
+            (gamecode.py), and zig does not build its libc again
 
 The copy is loose exefs/ and romfs/ folders, or a .nup package (the Switch 2 dump format, nup.py): --source names the
 package file itself. From a package, exefs/ is extracted, romfs/ extracted (copy) or the package itself
@@ -70,11 +71,12 @@ import build  # (GEN_FLAGS, module_glue, game_id: the same game code as build.py
 import game_texts  # (build_all: the game's texts in ca, gl, eu)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gamecode import compile_game
+from gamecode import DamagedSource, compile_game
 from gamesource import check, is_nx, loose_romfs, unpack
 from gamecopy import clear_dir, copy_tree, remove_stale
 from nup import Nup
 from machine import (
+    ZIG_CACHE,
     Failed,
     default_cc,
     default_glslc,
@@ -172,6 +174,13 @@ def regenerate_if_cleaned(state: dict, keys: dict[str, str], work: Path) -> None
         state["done"].pop("generate", None)
 
 
+def redo_exefs_if_missing(state: dict, game: Path) -> None:
+    """Undoes the exefs step when its copy is gone: the step is skipped by its key (source and version), and a folder
+    emptied or moved since made generate stop on "module main not in the layout" (#419), which names no cause."""
+    if "exefs" in state["done"] and not (game / "exefs/main").is_file():
+        state["done"].pop("exefs")
+
+
 GENERATOR = [
     *sorted((ROOT / "recomp").glob("*.py")),
     *sorted((ROOT / "recomp").glob("patches-mkw*.txt")),
@@ -182,14 +191,15 @@ COMPILER = [*GENERATOR, ROOT / "tools/build/build.py", Path(__file__).with_name(
 def warm(game: Path, work: Path, runtime: Path | None = None) -> None:
     """The game run once to its title, so the first real start finds pipeline-cache.bin and pipeline-keys.bin. Its
     saves go to a scratch profile: the player's first start stays a first start. The window opens without taking focus
-    and without sound; the run is ended after WARM_SECONDS."""
+    and without sound; the run is ended after WARM_SECONDS. Its log is logs/warm.log: in mkw.log it pushed the player's
+    last run out of the file reports attach and the start screen reads (#437, 16/11/2026)."""
     exe = (runtime or game) / ("mkw.exe" if os.name == "nt" else "mkw")
-    env = dict(os.environ, MKW_LAUNCHED="1", MKW_ASSUME_FOCUS="1", MKW_AUDIO="none",
+    env = dict(os.environ, MKW_LAUNCHED="1", MKW_ASSUME_FOCUS="1", MKW_AUDIO="none", MKW_LOG_NAME="warm",
                MKW_GAME_DIR=str(game), MKW_PROFILE_DIR=str(work / "warm-profile"))  # fmt: skip
     p = subprocess.Popen([str(exe)], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     for t in range(WARM_SECONDS):
         if p.poll() is not None:
-            raise Failed(f"the game stopped while warming up (exit {p.returncode}); its log is in {game / 'logs'}")
+            raise Failed(f"the game stopped while warming up (exit {p.returncode}); its log is {game / 'logs/warm.log'}")
         emit("progress", t, WARM_SECONDS)
         time.sleep(1)
     p.terminate()
@@ -324,6 +334,7 @@ def main() -> None:
             "warm": f"{build.game_id()} {romfs_src}",
         })  # fmt: skip
         regenerate_if_cleaned(state, keys, work)
+        redo_exefs_if_missing(state, game)
         for step in STEPS[1:]:
             # The start screen sets up again when its version differs (launcher.cpp): an update by hand (a new
             # AppImage or zip over the old) kept the old steps (#50: 0.1.8 played with 0.1.7's shaders). Kept once the
@@ -367,7 +378,14 @@ def main() -> None:
             elif step == "generate":
                 generate(game / "exefs", work, gen_jobs, version, image)
             elif step == "compile":
-                compile_game(game, game / "exefs", work, cc, args.target, jobs)
+                try:
+                    compile_game(game, game / "exefs", work, cc, args.target, jobs)
+                except DamagedSource as e:  # once: a second damaged write is the disk or the memory, not chance
+                    print(f"{e}: generating again", file=sys.stderr)
+                    emit("step", "generate")
+                    generate(game / "exefs", work, gen_jobs, version, image)
+                    emit("step", "compile")
+                    compile_game(game, game / "exefs", work, cc, args.target, jobs)
             elif step == "shaders":
                 # extract.py reads a .nup itself; a .nx's shader archives are unpacked first
                 src_romfs = loose_romfs(runtime, romfs, work, "Shader", *SHADER_DIRS) if is_nx(romfs) else romfs
@@ -376,7 +394,7 @@ def main() -> None:
                 warm(game, work, runtime)
             elif step == "cleanup":
                 for p in work.glob("*"):
-                    if p.is_dir() and p.name != "obj":
+                    if p.is_dir() and p.name not in ("obj", ZIG_CACHE):
                         shutil.rmtree(p, ignore_errors=True)
                 # the languages the game does not ship (ca, gl, eu), from this version's translations (the step runs
                 # at every setup, so an update brings its new texts); about a second

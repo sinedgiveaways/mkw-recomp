@@ -77,9 +77,9 @@ The main open work, in order; the details are in [docs/roadmap.md](docs/roadmap.
 
 ## Performance
 
-Measured frame times, each with its date, are in [docs/performance.md](docs/performance.md). To add your machine,
+Measured frame times, each with the version it ran, are in [docs/performance.md](docs/performance.md). To add your machine,
 open a [performance report](https://github.com/adriadam10/mkw-recomp/issues/new?template=performance.yml): it goes
-into the table with the date of the report. The times are the game's own frames: frame generation shows more frames
+into the table with the version it reports. The times are the game's own frames: frame generation shows more frames
 but does not shorten them. 16.7 ms is 60 fps; Frame rate on Automatic (the console's) drops to 30 fps when 60 is out of
 reach, and a frame over 33.3 ms runs the race slower than real time.
 
@@ -191,14 +191,16 @@ Linux, with `uv`, `clang`, `lld`, `ninja`, SDL3, Opus, libvpx, zstd, xxHash, the
 ```sh
 uv run python recomp/gen.py --exefs game/exefs --out build/generated --jobs 8 --patches recomp/patches-mkw.txt  # 1.8.0: patches-mkw-180.txt
 uv run tools/shaders/extract.py && uv run tools/shaders/translate.py
-uv run tools/build/build.py              # build/mkw; --target windows builds mkw.exe with llvm-mingw
+uv run tools/build/build.py              # build/mkw; --target windows builds mkw.exe with llvm-mingw (windeps.py)
 build/mkw
 ```
 
 Shortcuts for these flows and the release ones: `make build`, `make appimage` (`make help` lists them all).
 
-From a packed dump (`.nup`, `.nx`) and for Linux on AArch64: [tools/build/README.md](tools/build/README.md#a-packed-dump)
-and [its AArch64 section](tools/build/README.md#linux-aarch64).
+On Windows itself (uv, CMake and MSYS2 UCRT64's Ninja; no Linux machine, WSL or Wine): `windeps.py` then
+`build.py --target windows`, see [tools/build/README.md](tools/build/README.md#on-windows). From a packed dump (`.nup`,
+`.nx`) and for Linux on AArch64: [tools/build/README.md](tools/build/README.md#a-packed-dump) and
+[its AArch64 section](tools/build/README.md#linux-aarch64).
 
 Translating the shaders needs the SM86 encoding specification, generated from NVIDIA's `nvdisasm` (not shipped):
 see [tools/shaders/README.md](tools/shaders/README.md). Everything generated goes to `build/`, never to git.

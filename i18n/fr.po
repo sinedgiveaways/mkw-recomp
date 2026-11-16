@@ -157,6 +157,16 @@ msgid ""
 "Changes take several seconds and affect races started afterward."
 msgstr ""
 
+msgctxt "UI_MENU_CLASSIC_VS"
+msgid "Classic VS races"
+msgstr ""
+
+msgctxt "UI_MENU_CLASSIC_VS_DESC"
+msgid ""
+"VS races after the first take place on the next course instead of the road to it, whatever the "
+"course rule. Changes take several seconds and affect races started afterward."
+msgstr ""
+
 msgctxt "UI_MENU_ANISO"
 msgid "Texture filtering"
 msgstr "Filtrage des textures"
@@ -2618,6 +2628,16 @@ msgid ""
 msgstr ""
 "Au démarrage, demande à GitHub s'il existe une version plus récente du portage et la propose sur "
 "l'écran d'accueil (quelques secondes au plus, rien hors ligne)."
+
+msgctxt "UI_MENU_DISCORD"
+msgid "Discord status"
+msgstr ""
+
+msgctxt "UI_MENU_DISCORD_DESC"
+msgid ""
+"While the game runs, your Discord profile shows that you are playing, for how long, and whether "
+"you are racing or in the menus. Your Discord friends see it too."
+msgstr ""
 
 msgctxt "UI_LAUNCH_PLAYERS"
 msgid "Profiles"

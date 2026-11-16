@@ -298,6 +298,7 @@ void vram_log_now(void);                                  // the "mem: vram" rep
 const VmaDeviceMemoryCallbacks *vk_headroom_callbacks(void);
 void vk_headroom_start(void);
 void vk_tex_pool_start(void);   // MKW_VK_TEX_POOL_MIN: texture memory made at start (vk_tex_image.c)
+void vk_tex_pool_stop(void);    // after image destruction, before destroying the VMA allocator
 void vk_headroom_stop(void);   // before vmaDestroyAllocator
 int vk_mem_resolve(uint64_t addr, uint64_t size, VkMemSpan *out);   // 1 when all of [addr, addr+size) is backed
 int vk_mem_virt_phys(uint64_t addr, uint64_t *phys);   // virtual pool page at addr: 1 and the GPU address it maps to
@@ -307,7 +308,10 @@ int vk_mem_virt_phys(uint64_t addr, uint64_t *phys);   // virtual pool page at a
 // queue lock held, before each graphics-queue submission: the changed bindings (binds), behind every earlier submission,
 // and the wait and signal of that submission on the sparse order timeline.
 void vk_texture_report(uint64_t addr);   // MKW_CTL "tex ADDR": textures over addr (vk_texture.c)
-int vk_sparse_create(const VkImageCreateInfo *ci, const nvn_texdesc *d, uint64_t addr, uint64_t size, VkImage *img);
+typedef struct { uint32_t first; VkImageAspectFlags aspect; VkDeviceSize zero_bytes; } VkSparseTail;
+int vk_sparse_create(const VkImageCreateInfo *ci, const nvn_texdesc *d, uint64_t addr, uint64_t size, VkImage *img,
+                     VkSparseTail *tail);
+void vk_sparse_shutdown(void);   // after textures, retired work and device idle; before the VMA allocator
 uint64_t vk_sparse_destroy(VkImage img);   // the submission its binds are done by (0: none)
 int vk_sparse_is(VkImage img);   // 1: img is a sparse image made by vk_sparse_create
 void vk_sparse_remap(uint64_t addr, uint64_t size);
@@ -391,7 +395,11 @@ void vk_mem_defer_idle(int on);                    // around destroying what the
 void vk_mem_defer_use(uint64_t use);               // around a deferred destruction: MKW_GPU_GUARD's last part using it
 uint64_t vk_mem_defer_fence(uint64_t fence);       // returns the previous value; around a deferred destruction: wait for that submission (0: off)
 void vk_mem_collect(void);                         // frees what has completed
-typedef struct { uint64_t imported_pools, physical_pools, virtual_pools, import_failures, upload_batches; } VkMemStats;
+// phys_host_chunks: physical pool chunks backed outside device-local memory (it was full); phys_failed_chunks: left empty.
+typedef struct {
+    uint64_t imported_pools, physical_pools, virtual_pools, import_failures, upload_batches, phys_host_chunks,
+        phys_failed_chunks;
+} VkMemStats;
 void vk_mem_stats(VkMemStats *s);
 void vk_mem_shutdown(void);                        // before vk_shutdown: waits idle, frees every memory and texture object
 
@@ -455,6 +463,7 @@ const VkTexImage *vk_texture_get(const tex_t *t);   // created and made current;
 const VkTexImage *vk_texture_by_id(int id, view_t *view, int *has_view);
 VkFormat vk_srgb_twin(VkFormat f);                    // the sRGB / UNORM twin of an 8-bit colour format, else UNDEFINED
 int vk_format_numeric(VkFormat f);                    // GFX_TYPE_* its components read as in a shader
+void vk_sparse_granularity_texels(VkFormat f, uint32_t *gw, uint32_t *gh);   // a driver's imageGranularity as texels
 uint32_t vk_texture_slot_format(int id, uint64_t *addr);   // NVN format the game registered in slot id (0: none)
 // The replay looks up many slots per draw: it takes the texture lock once around them (vk_texture_lock) and uses the
 // _locked lookups; vk_texture_slots_gen changes whenever a slot may resolve to another image or view.
@@ -474,11 +483,23 @@ int vk_texture_checked(int id, uint32_t ep);   // unlocked: slot id's check in s
 uint64_t vk_texture_slot_token(int id);
 uint32_t vk_sampler_gen(void);                      // changes whenever a sampler slot is registered
 void vk_texture_gpu_written(const tex_t *t);        // rendered or copied into by the GPU: no re-upload from storage
+void vk_texture_compute_written(int id);          // a compute dispatch wrote slot id as a storage image: the same,
+// so a linear collision height map reaches its storage at the fence (MKW wave riding, #410)
 // runtime/gfx/cap: of the live image of t, if any (none is made): VK_TEXCAP_GPU its content is what the GPU wrote,
 // VK_TEXCAP_RECENT a draw sampled it within the last `recent` submissions, VK_TEXCAP_SPARSE it is a Vulkan sparse image
 // (a sparse NVN texture may be a whole image: depth formats in RADV).
 enum { VK_TEXCAP_GPU = 1, VK_TEXCAP_RECENT = 2, VK_TEXCAP_SPARSE = 4 };
 int vk_texture_capture_state(const tex_t *t, uint32_t recent);
+// runtime/gfx/cap: the image of an ASTC texture decoded into another format (RGBA8, BC7, BC1: TexVkFormat.astc_bw), as
+// the image's own bytes, since ReadTexels has no ASTC blocks to give for it. vk_texture_decoded: 1 and its format,
+// levels, layers (a 3D image: 1) and the bytes of one layer of each level when t has such an image (none is made).
+// vk_texture_decoded_copy: nlayers layers of one level read into buf, waiting for the GPU, or written from it (the
+// replay; the image is made when missing); 0 when the image here differs in format or size (a capture made with
+// another ASTC setting or GPU) and nothing was copied.
+typedef struct { VkFormat format; uint32_t levels, layers; uint64_t bytes[16]; } VkTexDecoded;
+int vk_texture_decoded(const tex_t *t, VkTexDecoded *out);
+int vk_texture_decoded_copy(const tex_t *t, VkFormat format, uint32_t level, uint32_t layer, uint32_t nlayers,
+                            uint8_t *buf, uint64_t bytes, int write);
 // vk_mem_cap.c (runtime/gfx/cap): every backed chunk of the physical pools out to emit, with its GPU address; and one
 // chunk written back at its address (0 when no physical pool chunk starts there). Both wait for the GPU.
 uint64_t vk_mem_phys_dump(void (*emit)(uint64_t addr, const void *p, uint64_t n, void *ctx), void *ctx);

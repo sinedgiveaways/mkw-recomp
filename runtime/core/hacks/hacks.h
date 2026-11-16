@@ -32,6 +32,7 @@ void freeze_present(void);               // the game's present: waits while froz
 // ---- unlock everything (unlock.c): MKW_UNLOCK_ALL=1 edits Play/account.sav when the game opens it
 int unlock_save(uint8_t *save, uint64_t size);  // the changes made; 0 for a save of another layout
 
-// ---- Classic Grand Prix (classic.c): MKW_CLASSIC_GP=1, every race of a Grand Prix cup is laps on one course
+// ---- Classic Grand Prix and VS (classic.c): MKW_CLASSIC_GP=1 / MKW_CLASSIC_VS=1, every race of a Grand Prix cup / of
+// VS is laps on one course
 void classic_seen(void *p, size_t n);      // ov_zstd.c: n bytes the host zstd decoder wrote (the archive, when it is)
-void classic_poll(void);                   // menu.cpp, each frame: the setting changed, the game's cups follow
+void classic_poll(void);                   // menu.cpp, each frame: a setting changed, the game's copies follow

@@ -40,6 +40,7 @@ static const RtVersion versions[] = {
     {
         .number = 100,
         .display = "1.0.0",
+        .output_lines = 1440,
         .nvn_ret = 0xcf3a60,
         .frame_update = 0x3a9e28,
         .frame_slot = 0x329fd50,
@@ -54,6 +55,9 @@ static const RtVersion versions[] = {
         .random_ctor_lr = 0x922088,
         .random_ctor2_lr = 0x15585a8,
         .ui_text_lr = 0x169aeb4,
+        .aspect_first_lr = 0x460d44,
+        .fov_entry_x = 24,   // main+0x45fba4: fmul s8, s0, s13, entry in x24
+        .fov_half_v = 13,
         .ui_focus_fn = 0xce8564,
         .race_events = RACE_EVENTS(0x316e2a0, 0x3172538, 0x3177780, 0x316ac10, 0x316dfb0, 0x31697c0, 0x3169910,
                                    0x3174f08, 0x3176490, 0x316c268, 0x316f400, 0x316cf10, 0x3165fe0, 0x316e100),
@@ -66,6 +70,8 @@ static const RtVersion versions[] = {
     {
         .number = 180,
         .display = "1.8.0",
+        .output_lines = 2160,
+        .final_at_screen = 1,
         .nvn_ret = 0xdd07cc,
         .frame_update = 0x69cbb0,
         .frame_slot = 0x367aac0,
@@ -80,6 +86,9 @@ static const RtVersion versions[] = {
         .random_ctor_lr = 0xbe9b78,
         .random_ctor2_lr = 0x16a0ef0,
         .ui_text_lr = 0x1805f20,
+        .aspect_first_lr = 0x8a6d8,   // 1.0.0's 460d44 (its fdiv at 8a6d4)
+        .fov_entry_x = 20,            // main+0x894a4, 1.0.0's 45fba4: fmul s8, s0, s14, entry in x20
+        .fov_half_v = 14,
         .ui_focus_fn = 0x7fd810,
         .camera_service = 0x378ecb8,   // RELATIVE at main+0x36f4148; 9 functions load it
         .race_events = RACE_EVENTS(0x353f5c0, 0x35448c0, 0x354a5d8, 0x353b3a0, 0x353f180, 0x3539c68, 0x3539db8,

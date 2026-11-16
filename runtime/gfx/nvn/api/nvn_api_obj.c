@@ -634,9 +634,13 @@ NVN_API(nvnWindowFinalize) { (void)c; }
 NVN_API(nvnWindowSetPresentInterval) {
     win_t *o = WN(c);
     int v = (int)arg_x(c, 1);
-    if (o->interval != v) {
+    // the first changes only: the game's own choice alternates 1 and 2 at 30-60 fps, 1269 lines in a run (fl124a);
+    // game.c's speed lines count the changes after
+    static unsigned logged;
+    if (o->interval != v && logged < 16) {
         char at[160];
-        rt_log("nvn: present interval %d -> %d (from %s)", o->interval, v, ldr_describe(c->x[30], at, sizeof at));
+        rt_log("nvn: present interval %d -> %d (from %s)%s", o->interval, v, ldr_describe(c->x[30], at, sizeof at),
+               ++logged == 16 ? "; later changes counted in the game: speed lines" : "");
     }
     o->interval = v;
 }

@@ -11,7 +11,9 @@ Changes against the original:
 
 - `lifter.py`: `RETAA`/`RETAB` as `ret`, `LDAPR*` as a load-acquire, `PAC*`/`AUT*`/`XPAC*` as identity (Switch 2's
   ARMv8.3).
-- `patches-mkw.txt`: besides the spin waits and zstd, the `output` set (the game's output size, `patches.c`) and the
+- `patches-mkw.txt`: the `vertplus` set supplies the late race-FOV hook for tall Window mode (also in
+  `patches-mkw-180.txt`). Without this regenerated set the runtime keeps tall windows at 16:9. Besides the spin waits and zstd, the
+  `output` set (the game's output size, `patches.c`) and the
   `shadow` set (the shadow map's size, and a second pool slot for the render-buffer allocator to hold it), and the `lan`
   set (`MKW_LAN=1`: the title menu opens with LAN Play chosen, as after its L+R+left stick combo).
 - `gen.py`: the `GENERATED_MARKER` (`MKW_RECOMP_…`) lives in the file itself instead of `tools/check_content.py`;

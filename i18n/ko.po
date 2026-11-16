@@ -146,6 +146,16 @@ msgid ""
 "Changes take several seconds and affect races started afterward."
 msgstr ""
 
+msgctxt "UI_MENU_CLASSIC_VS"
+msgid "Classic VS races"
+msgstr ""
+
+msgctxt "UI_MENU_CLASSIC_VS_DESC"
+msgid ""
+"VS races after the first take place on the next course instead of the road to it, whatever the "
+"course rule. Changes take several seconds and affect races started afterward."
+msgstr ""
+
 msgctxt "UI_MENU_ANISO"
 msgid "Texture filtering"
 msgstr "텍스처 필터링"
@@ -2519,6 +2529,16 @@ msgid ""
 "At start, ask GitHub for a newer release of the port and offer it on the start screen (a few "
 "seconds at most, nothing offline)."
 msgstr "시작할 때 GitHub에서 이 포트의 새 릴리스를 확인하고 시작 화면에서 안내합니다(길어야 몇 초이며, 오프라인에서는 아무것도 하지 않습니다)."
+
+msgctxt "UI_MENU_DISCORD"
+msgid "Discord status"
+msgstr ""
+
+msgctxt "UI_MENU_DISCORD_DESC"
+msgid ""
+"While the game runs, your Discord profile shows that you are playing, for how long, and whether "
+"you are racing or in the menus. Your Discord friends see it too."
+msgstr ""
 
 msgctxt "UI_LAUNCH_PLAYERS"
 msgid "Profiles"

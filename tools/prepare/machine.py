@@ -49,8 +49,25 @@ def default_cc(game: Path, target: str) -> list[str]:
         if not (lib / "std/std.zig").is_file():
             raise Failed(f"{lib} is incomplete: extract the release again")
         os.environ["ZIG_LIB_DIR"] = str(lib)
+        use_own_zig_cache(game)
         return [str(zig), "cc", "-target", "x86_64-windows-gnu" if target == "windows" else f"{build.ARCH}-linux-gnu"]
     return ["clang"]
+
+
+ZIG_CACHE = "zig-cache"  # in <game>/setup-work, kept by the cleanup step like obj/
+
+
+def use_own_zig_cache(game: Path) -> None:
+    """zig's caches (global and local) inside the game folder, setup-work/zig-cache, unless the player set
+    ZIG_GLOBAL_CACHE_DIR. In the user's cache folder zig's rename from its tmp/ into o/ failed with CrossDevice on a
+    Linux whose /home is one file system, and a one-file rename tried from Python there worked (#439, 16/11/2026: the
+    player's own ZIG_GLOBAL_CACHE_DIR was what made it build). The game folder is where the setup writes everything
+    else."""
+    if os.environ.get("ZIG_GLOBAL_CACHE_DIR"):
+        return
+    own = game / "setup-work" / ZIG_CACHE
+    own.mkdir(parents=True, exist_ok=True)
+    os.environ["ZIG_GLOBAL_CACHE_DIR"] = os.environ["ZIG_LOCAL_CACHE_DIR"] = str(own)
 
 
 def crt_spec(game: Path, cc: list[str]) -> Path | None:

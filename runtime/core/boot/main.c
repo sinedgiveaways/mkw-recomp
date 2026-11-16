@@ -111,6 +111,17 @@ const char *rt_log_path(void) {
     return __atomic_load_n(&g_log_state, __ATOMIC_ACQUIRE) == LOG_FILE ? g_log_path : NULL;
 }
 
+// MKW_LOG_NAME: the log file's name without .log for a run that is not the player's, NULL for the player's mkw.log.
+// Only letters, digits, '-' and '_' (a name, never a path), and never "mkw" or "mkw.N", which would clobber the rotation.
+static const char *log_name_own(void) {
+    const char *n = getenv("MKW_LOG_NAME");
+    if (!n || !*n || strlen(n) > 32 || !strncmp(n, "mkw", 3)) return NULL;
+    for (const char *p = n; *p; p++)
+        if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') || (*p >= '0' && *p <= '9') || *p == '-' || *p == '_'))
+            return NULL;
+    return n;
+}
+
 // Opens the log file for a game run (game = 1) and writes the buffered lines to it; anything else drops them. Runs on
 // the main thread before the boot starts other threads.
 static void log_open(int game) {
@@ -123,13 +134,21 @@ static void log_open(int game) {
     if (cut && (size_t)(cut - dir) + sizeof "/logs" <= sizeof dir) {
         strcpy(cut, "/logs");
         plat_file_mkdir_p(dir);
-        for (int i = LOG_KEEP - 1; i > 0; i--) {   // mkw.3.log -> mkw.4.log, ..., mkw.log -> mkw.1.log
-            if (i > 1) snprintf(from, sizeof from, "%s/mkw.%d.log", dir, i - 1);
-            else snprintf(from, sizeof from, "%s/mkw.log", dir);
-            snprintf(to, sizeof to, "%s/mkw.%d.log", dir, i);
-            if (plat_file_exists(from)) plat_file_replace(from, to);
+        // A run that is not the player's (the setup's warm-up, tools/prepare/prepare.py) names its own file and leaves
+        // mkw.log and its rotation alone: else updating pushed the player's crash out of mkw.log, the file a report
+        // attaches and the start screen reads (#437, 16/11/2026: the attached mkw.log was the 0.1.12 warm-up)
+        const char *own = log_name_own();
+        if (own) {
+            snprintf(g_log_path, sizeof g_log_path, "%s/%s.log", dir, own);
+        } else {
+            for (int i = LOG_KEEP - 1; i > 0; i--) {   // mkw.3.log -> mkw.4.log, ..., mkw.log -> mkw.1.log
+                if (i > 1) snprintf(from, sizeof from, "%s/mkw.%d.log", dir, i - 1);
+                else snprintf(from, sizeof from, "%s/mkw.log", dir);
+                snprintf(to, sizeof to, "%s/mkw.%d.log", dir, i);
+                if (plat_file_exists(from)) plat_file_replace(from, to);
+            }
+            snprintf(g_log_path, sizeof g_log_path, "%s/mkw.log", dir);
         }
-        snprintf(g_log_path, sizeof g_log_path, "%s/mkw.log", dir);
         g_log_file = plat_append_open(g_log_path);
     }
     if (!g_log_file) {
@@ -493,7 +512,7 @@ static int usage(const char *argv0) {
     fprintf(stderr, "usage: %s [--exefs DIR] [--romfs DIR|FILE.nup|FILE.nx] [--nup FILE] [--profile DIR] [--launcher | --play | --selftest | --probe-loader | "
                     "--probe-cfg | --probe-kernel | --probe-audio | --probe-services | --probe-fs | --probe-gfx-abi | "
                     "--probe-nvn | --probe-nvn-tex | --probe-window | --probe-vkmem | "
-                    "--probe-vkexec | --probe-astc | --probe-framegen | --probe-fps | --probe-texpre | --texpre | --boot |--seconds S [--shot PNG]]\n", argv0);
+                    "--probe-vkexec | --probe-astc | --probe-framegen | --probe-fps | --probe-discord | --probe-texpre | --texpre | --boot |--seconds S [--shot PNG]]\n", argv0);
     return 2;
 }
 
@@ -688,6 +707,7 @@ int main(int argc, char **argv) {
     if (!strcmp(mode, "--probe-astc")) return probe_astc();
     if (!strcmp(mode, "--probe-framegen")) return probe_framegen();
     if (!strcmp(mode, "--probe-fps")) return probe_fps();
+    if (!strcmp(mode, "--probe-discord")) return probe_discord();
     if (!strcmp(mode, "--probe-vkdevice")) return probe_vkdevice();
 
     if (!strcmp(mode, "--probe-texpre")) return probe_texpre();

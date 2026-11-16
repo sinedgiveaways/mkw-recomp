@@ -144,6 +144,16 @@ msgid ""
 "Changes take several seconds and affect races started afterward."
 msgstr ""
 
+msgctxt "UI_MENU_CLASSIC_VS"
+msgid "Classic VS races"
+msgstr ""
+
+msgctxt "UI_MENU_CLASSIC_VS_DESC"
+msgid ""
+"VS races after the first take place on the next course instead of the road to it, whatever the course rule. "
+"Changes take several seconds and affect races started afterward."
+msgstr ""
+
 msgctxt "UI_MENU_ANISO"
 msgid "Texture filtering"
 msgstr ""
@@ -2451,6 +2461,16 @@ msgctxt "UI_MENU_UPDATE_CHECK_DESC"
 msgid ""
 "At start, ask GitHub for a newer release of the port and offer it on the start screen (a few "
 "seconds at most, nothing offline)."
+msgstr ""
+
+msgctxt "UI_MENU_DISCORD"
+msgid "Discord status"
+msgstr ""
+
+msgctxt "UI_MENU_DISCORD_DESC"
+msgid ""
+"While the game runs, your Discord profile shows that you are playing, for how long, and whether "
+"you are racing or in the menus. Your Discord friends see it too."
 msgstr ""
 
 msgctxt "UI_LAUNCH_PLAYERS"

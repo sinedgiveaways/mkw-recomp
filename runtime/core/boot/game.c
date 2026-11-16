@@ -10,8 +10,9 @@
 // machine near 30 fps stayed at interval 1 and the race ran at half speed (Adrià 09/11/2026: "como si estuviera en
 // modo 60 yendo a 30"). [obj+0x210] = 1 or 2 is the game's own fixed interval, which skips that choice; any other
 // non-zero value skips it too and keeps the interval in [+0x214] as it is (main+0x3aa034), so 20 and 15 fps (3 and 4)
-// need no patch: both words are written before each call. MKW_FPS: auto (fps_auto.c, 1-4 from the time the game
-// measured, [+0x128]), 60, 30, 20, 15, or game (the game's own choice, 1-2: the console's, for A/B).
+// need no patch: both words are written before each call. MKW_FPS: auto (the game's own choice while it holds 30 fps,
+// fps_auto.c's 3 or 4 below that in a race; auto_want), 60, 30, 20, 15, or game (the game's own choice, 1-2: the
+// console's, for A/B).
 #include <stdatomic.h>
 #include <string.h>
 
@@ -111,6 +112,19 @@ static int auto_interval(uint64_t obj) {
     return iv;
 }
 
+// MKW_FPS=auto's interval to write, 0 for the game's own choice. While the controller fits 30 fps (interval 1 or 2) the
+// game picks 1 or 2 each frame from its own lateness, as on the console: a PC at 45-55 fps alternates them at 1.00x
+// (v0.1.11, fl124a). A whole interval there held such a PC at 30, since 60 needs a 2 s median under 14.2 ms, and 60
+// forced ran it in slow motion (#442, #446: auto at 2 on 20-25 ms frames; v0.1.12). Below 30 the game's choice stops
+// at 2 and the race ran at 0.75-0.83x (Radeon 660M, 36 ms frames), so there the controller's 3 or 4 (only in a race).
+// Frame generation keeps the controller's whole interval: its factor follows the game's interval (vk_framegen.c fits),
+// which would change from one frame to the next.
+static int auto_want(uint64_t obj) {
+    int iv = auto_interval(obj);
+    if (strcmp(cfg_value("MKW_FRAMEGEN"), "off")) return iv;
+    return iv > OUT_OF_RACE_MAX && race_scene_on() ? iv : 0;
+}
+
 // The game thread, once per frame: MKW_FPS into the fixed interval, then the game's own function. saved: the game's
 // value before the first forced frame, put back with MKW_FPS=game.
 static void host_frame_update(Cpu *c) {
@@ -129,7 +143,7 @@ static void host_frame_update(Cpu *c) {
     was_movie = movie, was_opening = opening;
     int want = opening                       ? 1
              : movie || !strcmp(fps, "game") ? 0
-             : !strcmp(fps, "auto")          ? auto_interval(c->x[0])
+             : !strcmp(fps, "auto")          ? auto_want(c->x[0])
                                              : fixed_interval(fps);
     // 20 and 15 only in a race (race_scene.c): menus and loads go at 30 at most, as on the console (Adrià 15/11/2026);
     // a menu counting in 1/60 s steps risks at 3 or 4 what the cup opening showed
@@ -149,7 +163,7 @@ static void host_frame_update(Cpu *c) {
     } else if (saved >= 0) {
         *fixed = (uint32_t)saved;
         saved = -1;
-        rt_log("game: present interval chosen by the game again (MKW_FPS game)");
+        rt_log("game: present interval chosen by the game again (MKW_FPS %s)", fps);
     }
     uint64_t obj = c->x[0], t0 = kern_now_ns();
     lat_mark("frame update start");
