@@ -337,6 +337,7 @@ int fps_auto_step(FpsAuto *a, double measured_ms, double real_ms);   // a frame'
 int probe_discord(void);                                   // discord_probe.c: Rich Presence against the local Discord
 int probe_dsu(void);                                       // dsu_probe.c: the DSU motion client against a fake server
 int probe_fps(void);                                       // fps_probe.c: the controller on synthetic frame times
+int probe_merge(void);                                     // merge_probe.c: the shadow write-back's two implementations
 void lat_input_read(void);                                 // vk_latency.c MKW_LATENCY: the game read the controller
 void lat_game_present(uint64_t slot);                      // ... and presented the frame shown at slot (pacer, ns)
 void lat_mark(const char *what);                           // ... a frame event, logged in MKW_PROBE's window
