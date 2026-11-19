@@ -34,7 +34,12 @@ A fix for the Linux AppImage: 0.1.14's setup stopped at `check` for every player
 
 ### Tested
 
-TODO
+From the packages Actions built for this tag, before publishing:
+
+- The whole setup from the Linux AppImage through its `setup/` link, as the start screen runs it (12 threads, game
+  1.0.0), in about 10 minutes; its warm-up built all 13 630 shader libraries and compute pipelines with none failed.
+- The whole setup from the Windows zip (the 6-thread Windows PC, game 1.0.0); its warm-up built the same 13 630 with
+  none failed.
 
 ## 0.1.14
 
